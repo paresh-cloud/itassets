@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script>
+        /* Lightweight client-side session guard — see login.html for details
+           and important caveats about what this does and doesn't protect. */
+        if (!sessionStorage.getItem('it_session')) {
+            window.location.href = 'login.html';
+        }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Ticket Management</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { display: flex; background-color: #0f172a; color: #f8fafc; height: 100vh; overflow: hidden; }
+
+        /* SIDEBAR */
+        .sidebar { width: 220px; background-color: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; flex-shrink: 0; }
+        .user-bar { padding: 10px 15px; background-color: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #94a3b8; }
+        .user-bar a { color: #f87171; text-decoration: none; font-weight: bold; }
+        .user-bar a:hover { text-decoration: underline; }
+        .menu-title { background-color: #0f172a; color: #ffffff; padding: 15px; text-align: center; font-weight: bold; letter-spacing: 1px; border-bottom: 1px solid #334155; }
+        .menu-item { padding: 14px 20px; color: #ffffff; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; border-bottom: 1px solid #334155; background-color: #1e293b; cursor: pointer; transition: 0.2s; text-decoration: none; display: block; }
+        .menu-item:hover { background-color: #2563eb; }
+        .menu-item.active { background-color: #f59e0b; color: #0f172a; }
+
+        /* MAIN CONTENT AREA */
+        .main-content { flex: 1; padding: 25px; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
+        .page-view { display: block; }
+
+        .header-title { font-size: 1.8rem; margin-bottom: 15px; color: #38bdf8; text-transform: uppercase; font-weight: bold; }
+
+        /* TOAST BANNER */
+        .toast-banner { display: none; position: fixed; top: 20px; right: 20px; background: #0284c7; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 200; font-size: 0.9rem; border-left: 5px solid #38bdf8; }
+        .toast-banner.show { display: block; animation: fadeIn 0.3s ease-in-out; }
+
+        /* TOOLBARS */
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 15px; flex-wrap: wrap; }
+        .filter-group { display: flex; gap: 10px; flex: 1; flex-wrap: wrap; align-items: center; }
+        .search-box input, .filter-select { padding: 9px 12px; background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #fff; font-size: 0.85rem; outline: none; }
+        .search-box input:focus, .filter-select:focus { border-color: #38bdf8; }
+
+        .action-buttons { display: flex; gap: 10px; }
+        .btn { padding: 9px 15px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 5px; }
+        .btn-add { background-color: #16a34a; color: white; }
+        .btn-add:hover { background-color: #15803d; }
+        .btn-export { background-color: #475569; color: white; }
+        .btn-export:hover { background-color: #334155; }
+        .btn-status { padding: 5px 8px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.75rem; color: white; }
+        .btn-resolve { background-color: #0284c7; }
+        .btn-resolve:hover { background-color: #0369a1; }
+        .btn-close { background-color: #16a34a; }
+        .btn-close:hover { background-color: #15803d; }
+
+        /* TABLES */
+        .table-container { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; padding: 20px; margin-bottom: 25px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 12px; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; }
+        td { padding: 12px; border-bottom: 1px solid #334155; font-size: 0.9rem; }
+
+        /* Clickable Asset Link */
+        .asset-link { color: #38bdf8; font-weight: bold; cursor: pointer; text-decoration: underline; }
+        .asset-link:hover { color: #7dd3fc; }
+
+        .action-cell { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+
+        /* BADGES */
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+        .status-open { background-color: #7f1d1d; color: #fca5a5; }
+        .status-progress { background-color: #78350f; color: #fde047; }
+        .status-resolved { background-color: #064e3b; color: #34d399; }
+
+        .priority-badge { padding: 3px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+        .prio-high { background-color: #ef4444; color: white; }
+        .prio-medium { background-color: #f59e0b; color: #0f172a; }
+        .prio-low { background-color: #3b82f6; color: white; }
+
+        /* MODALS */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 100; }
+        .modal.active { display: flex; }
+        .modal-content { background: #1e293b; border: 1px solid #334155; width: 680px; max-height: 90vh; overflow-y: auto; padding: 25px; border-radius: 8px; color: #fff; }
+        .modal-header { font-size: 1.2rem; margin-bottom: 15px; color: #38bdf8; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #334155; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-group { margin-bottom: 5px; }
+        .form-group.full-width { grid-column: span 2; }
+        .form-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; text-transform: uppercase; font-weight: bold; }
+        .req-star { color: #ef4444; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #fff; font-size: 0.85rem; }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+
+        /* DETAILS MODAL STYLING */
+        .details-section { background-color: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 15px; margin-bottom: 15px; }
+        .details-title { color: #38bdf8; font-size: 0.85rem; text-transform: uppercase; font-weight: bold; margin-bottom: 10px; border-bottom: 1px dashed #334155; padding-bottom: 5px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.88rem; }
+        .info-label { color: #94a3b8; font-weight: bold; font-size: 0.8rem; text-transform: uppercase; }
+        .info-value { color: #f8fafc; font-weight: 500; }
+        
+        .desc-box { background: #1e293b; border: 1px solid #334155; border-radius: 4px; padding: 10px; margin-top: 5px; color: #cbd5e1; font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; }
+
+        .history-list { margin-top: 5px; }
+        .history-item { background: #1e293b; border: 1px solid #334155; border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.82rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div id="toastBanner" class="toast-banner"></div>
+
+    <!-- SIDEBAR NAV -->
+    <div class="sidebar">
+        <div class="menu-title">IT ADMIN</div>
+        <div class="user-bar">
+            <span>👤 <span id="loggedInUserName">Admin</span></span>
+            <a href="#" onclick="logoutAdmin(); return false;">Logout</a>
+        </div>
+        <a href="dashboard.html" class="menu-item">DASHBOARD</a>
+        <a href="asset.html" class="menu-item">ASSETS</a>
+        <a href="user.html" class="menu-item">USERS & ASSIGNMENTS</a>
+        <a href="ticket.html" class="menu-item active">SUPPORT TICKETS</a>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <div class="main-content">
+        <div id="view-tickets" class="page-view">
+            <div class="header-title">IT Helpdesk & Incident Tracking</div>
+
+            <div class="toolbar">
+                <div class="filter-group">
+                    <div class="search-box">
+                        <input type="text" id="ticketSearchInput" onkeyup="renderTicketsTable()" placeholder="🔍 Search Ticket ID, User, Asset...">
+                    </div>
+                    <select id="ticketStatusFilter" class="filter-select" onchange="renderTicketsTable()">
+                        <option value="">All Statuses</option>
+                        <option value="Open">Open</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Resolved">Resolved</option>
+                    </select>
+                    <select id="ticketPriorityFilter" class="filter-select" onchange="renderTicketsTable()">
+                        <option value="">All Priorities</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                    </select>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-add" onclick="openCreateTicketModal()">+ Raise New Ticket</button>
+                    <button class="btn btn-export" onclick="exportTicketsCSV()">📥 Export CSV</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <h3 style="margin-bottom: 15px; color: #38bdf8;">All Raised Support Tickets</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ticket ID</th>
+                            <th>User Name</th>
+                            <th>Asset ID</th>
+                            <th>Issue Category</th>
+                            <th>Priority</th>
+                            <th>Created Date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ticketsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 1: CREATE TICKET -->
+    <div class="modal" id="ticketModal">
+        <div class="modal-content">
+            <div class="modal-header">Raise Support Ticket</div>
+            <form id="ticketForm" onsubmit="event.preventDefault(); saveTicket();">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Select User <span class="req-star">*</span></label>
+                        <select id="ticketUserSelect" required onchange="autoSelectUserAsset()"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Related Asset ID <span class="req-star">*</span></label>
+                        <select id="ticketAssetSelect" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Issue Category <span class="req-star">*</span></label>
+                        <select id="ticketCategory" required>
+                            <option value="Hardware Failure">Hardware Failure</option>
+                            <option value="Software Issue">Software Issue</option>
+                            <option value="Network / VPN">Network / VPN</option>
+                            <option value="Access & Identity">Access & Identity</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Priority <span class="req-star">*</span></label>
+                        <select id="ticketPriority" required>
+                            <option value="Low">Low</option>
+                            <option value="Medium" selected>Medium</option>
+                            <option value="High">High</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Problem Description <span class="req-star">*</span></label>
+                        <textarea id="ticketDescription" required placeholder="Describe the problem experienced with the device/system..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-export" onclick="closeModal('ticketModal')">Cancel</button>
+                    <button type="submit" class="btn btn-add">Create Ticket</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: ASSET DETAILS & ISSUE HISTORY POPUP -->
+    <div class="modal" id="assetDetailsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>Asset Details: <span id="detailAssetId" style="color:#f59e0b;"></span></span>
+                <span id="detailStatusBadge"></span>
+            </div>
+
+            <!-- Raised Person & Asset Info -->
+            <div class="details-section">
+                <div class="details-title">👤 Raised Person & Asset Info</div>
+                <div class="info-grid">
+                    <div><span class="info-label">Ticket ID:</span> <span id="detailTicketId" class="info-value"></span></div>
+                    <div><span class="info-label">Raised By:</span> <span id="detailUserName" class="info-value"></span></div>
+                    <div><span class="info-label">Email / Outlook:</span> <span id="detailUserEmail" class="info-value"></span></div>
+                    <div><span class="info-label">Priority:</span> <span id="detailPriority" class="info-value"></span></div>
+                </div>
+            </div>
+
+            <!-- Current Problem Description -->
+            <div class="details-section">
+                <div class="details-title">📋 Current Issue Details</div>
+                <div class="info-grid" style="margin-bottom: 8px;">
+                    <div><span class="info-label">Category:</span> <span id="detailCategory" class="info-value"></span></div>
+                    <div><span class="info-label">Raised Date:</span> <span id="detailCreatedDate" class="info-value"></span></div>
+                </div>
+                <div>
+                    <span class="info-label">Problem Description:</span>
+                    <div id="detailDescription" class="desc-box"></div>
+                </div>
+            </div>
+
+            <!-- Resolution Notes (only shown if this ticket has been resolved) -->
+            <div class="details-section" id="resolutionSection" style="display:none;">
+                <div class="details-title">✅ Resolution</div>
+                <div style="margin-bottom: 8px;"><span class="info-label">Resolved On:</span> <span id="detailResolvedDate" class="info-value"></span></div>
+                <div>
+                    <span class="info-label">What was done:</span>
+                    <div id="detailResolutionNotes" class="desc-box"></div>
+                </div>
+            </div>
+
+            <!-- Last Issues / Asset History -->
+            <div class="details-section">
+                <div class="details-title">🛠️ Last Issues / Ticket History for this Asset</div>
+                <div id="detailHistoryList" class="history-list"></div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-export" onclick="closeModal('assetDetailsModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: RESOLVE TICKET (ask what the issue was / how it was fixed) -->
+    <div class="modal" id="resolveModal">
+        <div class="modal-content" style="width: 520px;">
+            <div class="modal-header">✅ Resolve Ticket <span id="resolveTicketIdLabel" style="color:#38bdf8;"></span></div>
+            <form id="resolveForm" onsubmit="event.preventDefault(); confirmResolveTicket();">
+                <div class="form-group full-width">
+                    <label>Resolution Description <span class="req-star">*</span></label>
+                    <textarea id="resolveNotes" required placeholder="Describe what the issue was and how it was fixed..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-export" onclick="closeModal('resolveModal')">Cancel</button>
+                    <button type="submit" class="btn btn-add">Mark as Resolved</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    /* =====================================================================
+       Shared data layer (inlined so this page works standalone even if
+       data.js isn't alongside it, or the browser blocks local script
+       loading). Identical logic lives in data.js for reference/editing.
+       ===================================================================== */
+    /* =====================================================================
+       data.js — Shared data layer for the IT Asset Management CRM
+       Used by asset.html, user.html and ticket.html so that Assets,
+       Assignments and Tickets are read from / written to the SAME
+       localStorage records, instead of each page keeping its own copy.
+       ===================================================================== */
+
+    const STORAGE_KEYS = {
+        ASSETS: 'it_assets',
+        ASSIGNMENTS: 'it_assignments',
+        TICKETS: 'it_tickets'
+    };
+
+    /* ---------------- Default seed data (first run only) ---------------- */
+
+    const DEFAULT_ASSETS = [
+        {
+            id: 'AST-LAP-01', category: 'Laptop', brand: 'Dell', model: 'XPS 15', serial: 'SN-882910',
+            location: 'Mumbai', status: 'Active', assignedTo: 'Suresh Patel',
+            cost: '135000', purchaseDate: '2024-01-15', warranty: '3 Years', condition: 'Good',
+            remarks: 'Primary workstation',
+            specs: [
+                { label: 'Outlook ID', value: 'john.doe@company.com' },
+                { label: 'MAC ID', value: '00:1A:2B:3C:4D:5E' },
+                { label: 'RAM', value: '32 GB DDR5' },
+                { label: 'Storage', value: '1TB NVMe SSD' },
+                { label: 'Processor', value: 'Intel Core i7 13th Gen' }
+            ]
+        },
+        {
+            id: 'AST-SYS-02', category: 'Desktop (System)', brand: 'HP', model: 'ProDesk 600', serial: 'SN-776655',
+            location: 'Delhi', status: 'In Stock', assignedTo: 'Unassigned',
+            cost: '65000', purchaseDate: '2023-11-20', warranty: '2 Years', condition: 'New',
+            remarks: 'Finance team system',
+            specs: [
+                { label: 'Outlook ID', value: 'alice.smith@company.com' },
+                { label: 'MAC ID', value: '11:22:33:44:55:66' },
+                { label: 'RAM', value: '16GB DDR4' },
+                { label: 'Storage', value: '512GB SSD' }
+            ]
+        },
+        {
+            id: 'AST-LAP-03', category: 'Laptop', brand: 'Lenovo', model: 'ThinkPad T14', serial: 'SN-994422',
+            location: 'Mumbai', status: 'In Stock', assignedTo: 'Unassigned',
+            cost: '95000', purchaseDate: '2024-02-01', warranty: '3 Years', condition: 'New',
+            remarks: 'Stock Unit',
+            specs: [
+                { label: 'Outlook ID', value: 'user3@company.com' },
+                { label: 'MAC ID', value: '00:1A:2B:3C:4D:99' }
+            ]
+        }
+    ];
+
+    const DEFAULT_ASSIGNMENTS = [
+        { id: 1, userName: 'Ramesh Kumar', userOutlook: 'ramesh@company.com', dept: 'Engineering', assetId: 'AST-LAP-01', startTime: '2025-01-15 09:00', stopTime: '2026-01-15 18:00', status: 'Stopped' },
+        { id: 2, userName: 'Suresh Patel', userOutlook: 'suresh@company.com', dept: 'Marketing', assetId: 'AST-LAP-01', startTime: '2026-01-20 10:00', stopTime: 'Currently Active', status: 'Active' }
+    ];
+
+    const DEFAULT_TICKETS = [
+        { id: 'TCK-1001', userName: 'Suresh Patel', userEmail: 'suresh@company.com', assetId: 'AST-LAP-01', category: 'Hardware Failure', priority: 'High', description: 'Screen flickering intermittently during video calls.', createdDate: '2026-02-02 10:30', status: 'In Progress' },
+        { id: 'TCK-1002', userName: 'Ramesh Kumar', userEmail: 'ramesh@company.com', assetId: 'AST-SYS-02', category: 'Software Issue', priority: 'Medium', description: 'Requires administrative rights for software installation.', createdDate: '2026-02-05 14:15', status: 'Open' }
+    ];
+
+    /* Per-category extra spec fields, shared by the Add/Edit Asset form and CSV import */
+    const CATEGORY_SCHEMAS = {
+        "Laptop": [
+            { id: 'spec_outlook', label: 'Outlook ID', placeholder: 'e.g. user@company.com' },
+            { id: 'spec_mac', label: 'MAC ID', placeholder: 'e.g. 00:1A:2B:3C:4D:5E' },
+            { id: 'spec_ram', label: 'RAM', placeholder: 'e.g. 16GB / 32GB' },
+            { id: 'spec_storage', label: 'Storage', placeholder: 'e.g. 512GB SSD' },
+            { id: 'spec_processor', label: 'Processor', placeholder: 'e.g. Intel i7 / M2' },
+            { id: 'spec_os', label: 'Operating System', placeholder: 'e.g. Windows 11 / macOS' }
+        ],
+        "Desktop (System)": [
+            { id: 'spec_outlook', label: 'Outlook ID', placeholder: 'e.g. user@company.com' },
+            { id: 'spec_mac', label: 'MAC ID', placeholder: 'e.g. 00:1A:2B:3C:4D:5E' },
+            { id: 'spec_ram', label: 'RAM', placeholder: 'e.g. 32GB DDR4' },
+            { id: 'spec_storage', label: 'Storage', placeholder: 'e.g. 1TB SSD' },
+            { id: 'spec_gpu', label: 'Graphics Card', placeholder: 'e.g. RTX 3060' }
+        ],
+        "Printer": [
+            { id: 'spec_print_type', label: 'Printer Type', placeholder: 'e.g. LaserJet' },
+            { id: 'spec_ip', label: 'IP Address', placeholder: 'e.g. 192.168.1.150' }
+        ],
+        "Router": [
+            { id: 'spec_ip', label: 'IP Address', placeholder: 'e.g. 192.168.1.1' },
+            { id: 'spec_ports', label: 'Ports Count', placeholder: 'e.g. 8 Ports' }
+        ],
+        "Mobile": [
+            { id: 'spec_imei', label: 'IMEI Number', placeholder: 'e.g. 356938035641098' }
+        ],
+        "Storage & Backup": [
+            { id: 'spec_capacity', label: 'Total Capacity', placeholder: 'e.g. 16TB' }
+        ],
+        "Display & AV Equipment": [
+            { id: 'spec_resolution', label: 'Resolution', placeholder: 'e.g. 4K UHD' }
+        ],
+        "Security & Surveillance": [
+            { id: 'spec_ip', label: 'IP Address', placeholder: 'e.g. 192.168.2.50' }
+        ],
+        "Other IT Equipment": [
+            { id: 'spec_custom', label: 'Specification', placeholder: 'Custom Detail' }
+        ]
+    };
+
+    /* ---------------- Low level storage helpers ---------------- */
+
+    function _readKey(key, fallback) {
+        try {
+            const raw = localStorage.getItem(key);
+            return raw ? JSON.parse(raw) : fallback;
+        } catch (e) {
+            console.error('data.js: failed to read', key, e);
+            return fallback;
+        }
+    }
+
+    function _writeKey(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+        // storage events only fire in OTHER tabs, so also notify listeners in THIS tab
+        window.dispatchEvent(new CustomEvent('it-data-changed', { detail: { key } }));
+    }
+
+    function getAssets() { return _readKey(STORAGE_KEYS.ASSETS, DEFAULT_ASSETS); }
+    function setAssets(data) { _writeKey(STORAGE_KEYS.ASSETS, data); }
+
+    function getAssignments() { return _readKey(STORAGE_KEYS.ASSIGNMENTS, DEFAULT_ASSIGNMENTS); }
+    function setAssignments(data) { _writeKey(STORAGE_KEYS.ASSIGNMENTS, data); }
+
+    function getTickets() { return _readKey(STORAGE_KEYS.TICKETS, DEFAULT_TICKETS); }
+    function setTickets(data) { _writeKey(STORAGE_KEYS.TICKETS, data); }
+
+    /* Make sure localStorage has data the very first time any page is opened */
+    const AUTH_SESSION_KEY = 'it_session';
+    function getSession() {
+        try { return JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY)); } catch (e) { return null; }
+    }
+    function logoutAdmin() {
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        window.location.href = 'login.html';
+    }
+    function renderLoggedInUser() {
+        const session = getSession();
+        const el = document.getElementById('loggedInUserName');
+        if (el && session) el.innerText = session.fullName || session.username;
+    }
+
+    function ensureSeedData() {
+        if (!localStorage.getItem(STORAGE_KEYS.ASSETS)) setAssets(DEFAULT_ASSETS);
+        if (!localStorage.getItem(STORAGE_KEYS.ASSIGNMENTS)) setAssignments(DEFAULT_ASSIGNMENTS);
+        if (!localStorage.getItem(STORAGE_KEYS.TICKETS)) setTickets(DEFAULT_TICKETS);
+    }
+
+    /* Keep each asset's status / assignedTo in sync with the Assignments list.
+       The Assignments list (managed on user.html) is the source of truth for
+       "who currently has this asset". Returns the (possibly updated) assets array. */
+    function reconcileAssetAssignments() {
+        const assets = getAssets();
+        const assignments = getAssignments();
+        let changed = false;
+
+        assets.forEach(asset => {
+            const active = assignments.find(a => a.assetId === asset.id && a.status === 'Active');
+            const newAssignedTo = active ? active.userName : 'Unassigned';
+            const newStatus = active ? 'Active' : 'In Stock';
+            if (asset.assignedTo !== newAssignedTo || asset.status !== newStatus) {
+                asset.assignedTo = newAssignedTo;
+                asset.status = newStatus;
+                changed = true;
+            }
+        });
+
+        if (changed) setAssets(assets);
+        return assets;
+    }
+
+    /* Generate a unique Asset ID, e.g. AST-LAP-04, avoiding collisions */
+    function generateAssetId(categoryHint) {
+        const map = {
+            'Laptop': 'LAP', 'Desktop (System)': 'SYS', 'Printer': 'PRN', 'Router': 'RTR',
+            'Mobile': 'MOB', 'Storage & Backup': 'STG', 'Display & AV Equipment': 'AV',
+            'Security & Surveillance': 'SEC', 'Other IT Equipment': 'OTH'
+        };
+        const prefix = map[categoryHint] || 'GEN';
+        const assets = getAssets();
+        let n = 1, id;
+        do {
+            id = `AST-${prefix}-${String(n).padStart(2, '0')}`;
+            n++;
+        } while (assets.some(a => a.id === id));
+        return id;
+    }
+
+    /* Generate a unique Ticket ID (TCK-1001, TCK-1002, ...), scanning for the
+       next unused number so deletions or concurrent creation never collide. */
+    function generateTicketId() {
+        const tickets = getTickets();
+        let n = 1001, id;
+        do {
+            id = `TCK-${n}`;
+            n++;
+        } while (tickets.some(t => t.id === id));
+        return id;
+    }
+
+    /* Register a handler that fires whenever data changes — in this tab
+       (custom event), another tab (storage event), or when the tab regains focus. */
+    function onDataChange(handler) {
+        window.addEventListener('storage', function (e) {
+            if (Object.values(STORAGE_KEYS).includes(e.key)) handler(e.key);
+        });
+        window.addEventListener('it-data-changed', function (e) {
+            handler(e.detail.key);
+        });
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') handler(null);
+        });
+    }
+    </script>
+    <script>
+        // Tickets, Assets and Assignments are read from / written to the shared
+        // localStorage records defined in data.js.
+
+        window.onload = function() {
+            renderLoggedInUser();
+            ensureSeedData();
+            renderTicketsTable();
+        };
+
+        // Keep this page in sync whenever data changes — in this tab, another
+        // tab, or when switching back to this tab.
+        onDataChange(function () {
+            renderTicketsTable();
+        });
+
+        function showBanner(msg) {
+            const banner = document.getElementById('toastBanner');
+            banner.innerHTML = msg;
+            banner.className = 'toast-banner show';
+            setTimeout(() => banner.className = 'toast-banner', 4000);
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        function openCreateTicketModal() {
+            const userSelect = document.getElementById('ticketUserSelect');
+            const assetSelect = document.getElementById('ticketAssetSelect');
+            
+            userSelect.innerHTML = '<option value="">-- Select User --</option>';
+            assetSelect.innerHTML = '<option value="">-- Select Asset --</option>';
+
+            const assignments = getAssignments();
+            const assets = getAssets();
+
+            const activeUsers = [...new Set(assignments.map(a => a.userName))];
+            activeUsers.forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u;
+                opt.innerText = u;
+                userSelect.appendChild(opt);
+            });
+
+            assets.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.id;
+                opt.innerText = `${a.id} (${a.brand} ${a.model})`;
+                assetSelect.appendChild(opt);
+            });
+
+            document.getElementById('ticketForm').reset();
+            document.getElementById('ticketModal').classList.add('active');
+        }
+
+        function autoSelectUserAsset() {
+            const selectedUser = document.getElementById('ticketUserSelect').value;
+            const assignments = getAssignments();
+            const activeAssignment = assignments.find(a => a.userName === selectedUser && a.status === 'Active');
+            
+            if (activeAssignment) {
+                document.getElementById('ticketAssetSelect').value = activeAssignment.assetId;
+            }
+        }
+
+        function saveTicket() {
+            const userName = document.getElementById('ticketUserSelect').value;
+            const assetId = document.getElementById('ticketAssetSelect').value;
+            const category = document.getElementById('ticketCategory').value;
+            const priority = document.getElementById('ticketPriority').value;
+            const description = document.getElementById('ticketDescription').value.trim();
+
+            let tickets = getTickets();
+            const newId = generateTicketId();
+            const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+            const assignments = getAssignments();
+            const userAssign = assignments.find(a => a.userName === userName);
+            const userEmail = userAssign ? userAssign.userOutlook : 'N/A';
+
+            tickets.unshift({
+                id: newId,
+                userName,
+                userEmail,
+                assetId,
+                category,
+                priority,
+                description,
+                createdDate: now,
+                status: 'Open'
+            });
+
+            setTickets(tickets);
+            closeModal('ticketModal');
+            renderTicketsTable();
+            showBanner(`Ticket <strong>${newId}</strong> created successfully!`);
+        }
+
+        function updateTicketStatus(ticketId, newStatus) {
+            let tickets = getTickets();
+            const ticket = tickets.find(t => t.id === ticketId);
+            if (ticket) {
+                ticket.status = newStatus;
+                setTickets(tickets);
+                renderTicketsTable();
+                showBanner(`Ticket <strong>${ticketId}</strong> set to <strong>${newStatus}</strong>.`);
+            }
+        }
+
+        let pendingResolveTicketId = null;
+
+        function openResolveModal(ticketId) {
+            pendingResolveTicketId = ticketId;
+            document.getElementById('resolveTicketIdLabel').innerText = ticketId;
+            document.getElementById('resolveNotes').value = '';
+            document.getElementById('resolveModal').classList.add('active');
+        }
+
+        function confirmResolveTicket() {
+            const notes = document.getElementById('resolveNotes').value.trim();
+            if (!notes) return; // required field, native validation should already block this
+
+            const tickets = getTickets();
+            const ticket = tickets.find(t => t.id === pendingResolveTicketId);
+            if (ticket) {
+                ticket.status = 'Resolved';
+                ticket.resolutionNotes = notes;
+                ticket.resolvedDate = new Date().toISOString().slice(0, 10) + ' ' + new Date().toTimeString().slice(0, 5);
+                setTickets(tickets);
+                renderTicketsTable();
+                showBanner(`Ticket <strong>${pendingResolveTicketId}</strong> marked as <strong>Resolved</strong>.`);
+            }
+
+            pendingResolveTicketId = null;
+            closeModal('resolveModal');
+        }
+
+        /* OPEN POPUP WHEN CLICKING ASSET ID */
+        function openAssetDetailsModal(assetId, currentTicketId) {
+            const tickets = getTickets();
+            const currentTicket = tickets.find(t => t.id === currentTicketId) || tickets.find(t => t.assetId === assetId);
+
+            if (!currentTicket) return;
+
+            // Display current selected asset/ticket information
+            document.getElementById('detailAssetId').innerText = assetId;
+            document.getElementById('detailTicketId').innerText = currentTicket.id;
+            document.getElementById('detailUserName').innerText = currentTicket.userName || 'N/A';
+            document.getElementById('detailUserEmail').innerText = currentTicket.userEmail || 'N/A';
+            document.getElementById('detailPriority').innerText = currentTicket.priority || 'Medium';
+            document.getElementById('detailCategory').innerText = currentTicket.category || 'N/A';
+            document.getElementById('detailCreatedDate').innerText = currentTicket.createdDate || 'N/A';
+            document.getElementById('detailDescription').innerText = currentTicket.description || 'No description provided.';
+
+            // Status Badge
+            let statusClass = 'status-open';
+            if (currentTicket.status === 'In Progress') statusClass = 'status-progress';
+            if (currentTicket.status === 'Resolved') statusClass = 'status-resolved';
+            document.getElementById('detailStatusBadge').innerHTML = `<span class="status-badge ${statusClass}">${currentTicket.status}</span>`;
+
+            // Resolution details (only if resolved)
+            const resolutionSection = document.getElementById('resolutionSection');
+            if (currentTicket.status === 'Resolved' && currentTicket.resolutionNotes) {
+                document.getElementById('detailResolvedDate').innerText = currentTicket.resolvedDate || 'N/A';
+                document.getElementById('detailResolutionNotes').innerText = currentTicket.resolutionNotes;
+                resolutionSection.style.display = 'block';
+            } else {
+                resolutionSection.style.display = 'none';
+            }
+
+            // Search for Previous Tickets linked to the SAME ASSET ID
+            const historyContainer = document.getElementById('detailHistoryList');
+            historyContainer.innerHTML = '';
+
+            const assetHistory = tickets.filter(t => t.assetId === assetId && t.id !== currentTicket.id);
+
+            if (assetHistory.length === 0) {
+                historyContainer.innerHTML = `<div style="color: #64748b; font-size: 0.85rem; italic;">No previous issue history found for this Asset.</div>`;
+            } else {
+                assetHistory.forEach(hist => {
+                    let hStatusClass = 'status-open';
+                    if (hist.status === 'In Progress') hStatusClass = 'status-progress';
+                    if (hist.status === 'Resolved') hStatusClass = 'status-resolved';
+
+                    const item = document.createElement('div');
+                    item.className = 'history-item';
+                    item.style.flexDirection = 'column';
+                    item.style.alignItems = 'flex-start';
+                    item.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                            <div>
+                                <strong style="color: #38bdf8;">${hist.id}</strong> - 
+                                <span>${hist.category}</span> 
+                                <span style="color: #94a3b8;">(Raised by: ${hist.userName} on ${hist.createdDate})</span>
+                            </div>
+                            <span class="status-badge ${hStatusClass}">${hist.status}</span>
+                        </div>
+                        ${hist.status === 'Resolved' && hist.resolutionNotes ? `<div style="margin-top:6px; font-size:0.8rem; color:#cbd5e1;"><strong>Resolution:</strong> ${hist.resolutionNotes}</div>` : ''}
+                    `;
+                    historyContainer.appendChild(item);
+                });
+            }
+
+            document.getElementById('assetDetailsModal').classList.add('active');
+        }
+
+        function renderTicketsTable() {
+            const tickets = getTickets();
+            const tbody = document.getElementById('ticketsTableBody');
+            const search = document.getElementById('ticketSearchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('ticketStatusFilter').value;
+            const priorityFilter = document.getElementById('ticketPriorityFilter').value;
+
+            tbody.innerHTML = '';
+
+            tickets.forEach(t => {
+                const matchesSearch = t.id.toLowerCase().includes(search) || t.userName.toLowerCase().includes(search) || t.assetId.toLowerCase().includes(search);
+                const matchesStatus = !statusFilter || t.status === statusFilter;
+                const matchesPriority = !priorityFilter || t.priority === priorityFilter;
+
+                if (matchesSearch && matchesStatus && matchesPriority) {
+                    let statusClass = 'status-open';
+                    if (t.status === 'In Progress') statusClass = 'status-progress';
+                    if (t.status === 'Resolved') statusClass = 'status-resolved';
+
+                    let prioClass = 'prio-low';
+                    if (t.priority === 'Medium') prioClass = 'prio-medium';
+                    if (t.priority === 'High') prioClass = 'prio-high';
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>${t.id}</strong></td>
+                        <td>${t.userName}</td>
+                        <td><span class="asset-link" onclick="openAssetDetailsModal('${t.assetId}', '${t.id}')">${t.assetId}</span></td>
+                        <td>${t.category}</td>
+                        <td><span class="priority-badge ${prioClass}">${t.priority}</span></td>
+                        <td>${t.createdDate}</td>
+                        <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                        <td>
+                            <div class="action-cell">
+                                ${t.status === 'Open' ? `<button class="btn-status btn-resolve" onclick="updateTicketStatus('${t.id}', 'In Progress')">Start Progress</button>` : ''}
+                                ${t.status === 'In Progress' ? `<button class="btn-status btn-close" onclick="openResolveModal('${t.id}')">Resolve</button>` : ''}
+                                ${t.status === 'Resolved' ? `<span style="color:#94a3b8; font-size:0.8rem;">Completed</span>` : ''}
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            });
+        }
+
+        function exportTicketsCSV() {
+            const tickets = getTickets();
+            if (tickets.length === 0) {
+                alert("No tickets available to export.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,Ticket ID,User Name,User Email,Asset ID,Category,Priority,Created Date,Status,Problem Description,Resolution Description,Resolved Date\n";
+            tickets.forEach(t => {
+                const problemDesc = (t.description || '').replace(/"/g, '""');
+                const resolutionDesc = (t.resolutionNotes || '').replace(/"/g, '""');
+                csvContent += `"${t.id}","${t.userName}","${t.userEmail || ''}","${t.assetId}","${t.category}","${t.priority}","${t.createdDate}","${t.status}","${problemDesc}","${resolutionDesc}","${t.resolvedDate || ''}"\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "IT_Support_Tickets.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script>
+        /* Lightweight client-side session guard — see login.html for details
+           and important caveats about what this does and doesn't protect. */
+        if (!sessionStorage.getItem('it_session')) {
+            window.location.href = 'login.html';
+        }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Asset & User History Tracker</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { display: flex; background-color: #0f172a; color: #f8fafc; height: 100vh; overflow: hidden; }
+
+        /* SIDEBAR */
+        .sidebar { width: 220px; background-color: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; flex-shrink: 0; }
+        .user-bar { padding: 10px 15px; background-color: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #94a3b8; }
+        .user-bar a { color: #f87171; text-decoration: none; font-weight: bold; }
+        .user-bar a:hover { text-decoration: underline; }
+        .menu-title { background-color: #0f172a; color: #ffffff; padding: 15px; text-align: center; font-weight: bold; letter-spacing: 1px; border-bottom: 1px solid #334155; }
+        .menu-item { padding: 14px 20px; color: #ffffff; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; border-bottom: 1px solid #334155; background-color: #1e293b; cursor: pointer; transition: 0.2s; text-decoration: none; display: block; }
+        .menu-item:hover { background-color: #2563eb; }
+        .menu-item.active { background-color: #f59e0b; color: #0f172a; }
+
+        /* MAIN CONTENT AREA */
+        .main-content { flex: 1; padding: 25px; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
+        .page-view { display: block; }
+
+        .header-title { font-size: 1.8rem; margin-bottom: 15px; color: #38bdf8; text-transform: uppercase; font-weight: bold; }
+
+        /* TOAST BANNER */
+        .toast-banner { display: none; position: fixed; top: 20px; right: 20px; background: #0284c7; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 200; font-size: 0.9rem; border-left: 5px solid #38bdf8; }
+        .toast-banner.show { display: block; animation: fadeIn 0.3s ease-in-out; }
+
+        /* TOOLBARS */
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 15px; flex-wrap: wrap; }
+        .filter-group { display: flex; gap: 10px; flex: 1; flex-wrap: wrap; align-items: center; }
+        .search-box input, .filter-select { padding: 9px 12px; background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #fff; font-size: 0.85rem; outline: none; }
+        .search-box input:focus, .filter-select:focus { border-color: #38bdf8; }
+
+        .action-buttons { display: flex; gap: 10px; }
+        .btn { padding: 9px 15px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 5px; }
+        .btn-add { background-color: #16a34a; color: white; }
+        .btn-add:hover { background-color: #15803d; }
+        .btn-export { background-color: #475569; color: white; }
+        .btn-export:hover { background-color: #334155; }
+        .btn-stop { background-color: #d97706; color: white; }
+        .btn-stop:hover { background-color: #b45309; }
+
+        /* TABLES */
+        .table-container { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; padding: 20px; margin-bottom: 25px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 12px; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; }
+        td { padding: 12px; border-bottom: 1px solid #334155; font-size: 0.9rem; }
+
+        .action-cell { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+        .btn-history { padding: 6px 10px; background-color: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.8rem; }
+        .btn-history:hover { background-color: #7c3aed; }
+
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+        .status-active { background-color: #064e3b; color: #34d399; }
+        .status-stopped { background-color: #7f1d1d; color: #fca5a5; }
+
+        /* TIMELINE HISTORY POPUP STYLING */
+        .timeline { position: relative; padding-left: 20px; margin-top: 15px; border-left: 2px solid #334155; }
+        .timeline-item { position: relative; margin-bottom: 20px; padding-left: 15px; }
+        .timeline-item::before { content: ''; position: absolute; left: -27px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: #38bdf8; border: 2px solid #0f172a; }
+        .timeline-item.stopped::before { background: #ef4444; }
+        .timeline-item.active::before { background: #22c55e; }
+        .timeline-date { font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; }
+        .timeline-content { background: #0f172a; padding: 12px; border-radius: 6px; border: 1px solid #334155; }
+
+        /* MODALS */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 100; }
+        .modal.active { display: flex; }
+        .modal-content { background: #1e293b; border: 1px solid #334155; width: 650px; max-height: 90vh; overflow-y: auto; padding: 25px; border-radius: 8px; color: #fff; }
+        .modal-header { font-size: 1.2rem; margin-bottom: 15px; color: #38bdf8; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-group { margin-bottom: 5px; }
+        .form-group.full-width { grid-column: span 2; }
+        .form-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; text-transform: uppercase; font-weight: bold; }
+        .req-star { color: #ef4444; }
+        .form-group input, .form-group select { width: 100%; padding: 8px; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #fff; font-size: 0.85rem; }
+
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div id="toastBanner" class="toast-banner"></div>
+
+    <!-- SIDEBAR NAV -->
+    <div class="sidebar">
+        <div class="menu-title">IT ADMIN</div>
+        <div class="user-bar">
+            <span>👤 <span id="loggedInUserName">Admin</span></span>
+            <a href="#" onclick="logoutAdmin(); return false;">Logout</a>
+        </div>
+        <a href="dashboard.html" class="menu-item">DASHBOARD</a>
+        <a href="asset.html" class="menu-item">ASSETS</a>
+        <a href="user.html" class="menu-item active">USERS & ASSIGNMENTS</a>
+        <a href="ticket.html" class="menu-item">SUPPORT TICKETS</a>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <div class="main-content">
+        <div id="view-users" class="page-view">
+            <div class="header-title">User Allocation & Usage Tracking</div>
+
+            <div class="toolbar">
+                <div class="filter-group">
+                    <div class="search-box">
+                        <input type="text" id="userSearchInput" onkeyup="renderAssignmentsTable()" placeholder="🔍 Search User, Email, Laptop ID...">
+                    </div>
+                    <select id="userStatusFilter" class="filter-select" onchange="renderAssignmentsTable()">
+                        <option value="">All Assignments</option>
+                        <option value="Active">Currently Using</option>
+                        <option value="Stopped">Stopped / Returned</option>
+                    </select>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-add" onclick="openAssignModal()">+ Assign Asset to User</button>
+                    <button class="btn btn-export" onclick="exportAssignmentsCSV()">📥 Export CSV</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <h3 style="margin-bottom: 15px; color: #38bdf8;">All Active & Historical User Assignments</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User Name</th>
+                            <th>Email / Outlook ID</th>
+                            <th>Department</th>
+                            <th>Assigned Laptop/Asset ID</th>
+                            <th>Start Date & Time</th>
+                            <th>Stopped / Returned Date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assignmentsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL POPUP: USER LAPTOP USAGE HISTORY -->
+    <div class="modal" id="userHistoryModal">
+        <div class="modal-content">
+            <div class="modal-header" id="userHistoryModalTitle">Laptop Usage History</div>
+            <div id="userHistoryTimelineContent"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-export" onclick="closeModal('userHistoryModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ASSIGN ASSET TO USER -->
+    <div class="modal" id="assignModal">
+        <div class="modal-content">
+            <div class="modal-header">Assign Laptop / Asset to User</div>
+            <form id="assignForm" onsubmit="event.preventDefault(); saveAssignment();">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>User Full Name <span class="req-star">*</span></label>
+                        <input type="text" id="userName" required placeholder="e.g. Ramesh Kumar">
+                    </div>
+                    <div class="form-group">
+                        <label>User Email / Outlook ID <span class="req-star">*</span></label>
+                        <input type="email" id="userOutlook" required placeholder="ramesh@company.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Department</label>
+                        <input type="text" id="userDept" placeholder="e.g. Engineering">
+                    </div>
+                    <div class="form-group">
+                        <label>Select Available Asset <span class="req-star">*</span></label>
+                        <select id="assignAssetSelect" required></select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Usage Start Date & Time <span class="req-star">*</span></label>
+                        <input type="datetime-local" id="assignStartDateTime" required>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-export" onclick="closeModal('assignModal')">Cancel</button>
+                    <button type="submit" class="btn btn-add">Confirm Assignment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    /* =====================================================================
+       Shared data layer (inlined so this page works standalone even if
+       data.js isn't alongside it, or the browser blocks local script
+       loading). Identical logic lives in data.js for reference/editing.
+       ===================================================================== */
+    /* =====================================================================
+       data.js — Shared data layer for the IT Asset Management CRM
+       Used by asset.html, user.html and ticket.html so that Assets,
+       Assignments and Tickets are read from / written to the SAME
+       localStorage records, instead of each page keeping its own copy.
+       ===================================================================== */
+
+    const STORAGE_KEYS = {
+        ASSETS: 'it_assets',
+        ASSIGNMENTS: 'it_assignments',
+        TICKETS: 'it_tickets'
+    };
+
+    /* ---------------- Default seed data (first run only) ---------------- */
+
+    const DEFAULT_ASSETS = [
+        {
+            id: 'AST-LAP-01', category: 'Laptop', brand: 'Dell', model: 'XPS 15', serial: 'SN-882910',
+            location: 'Mumbai', status: 'Active', assignedTo: 'Suresh Patel',
+            cost: '135000', purchaseDate: '2024-01-15', warranty: '3 Years', condition: 'Good',
+            remarks: 'Primary workstation',
+            specs: [
+                { label: 'Outlook ID', value: 'john.doe@company.com' },
+                { label: 'MAC ID', value: '00:1A:2B:3C:4D:5E' },
+                { label: 'RAM', value: '32 GB DDR5' },
+                { label: 'Storage', value: '1TB NVMe SSD' },
+                { label: 'Processor', value: 'Intel Core i7 13th Gen' }
+            ]
+        },
+        {
+            id: 'AST-SYS-02', category: 'Desktop (System)', brand: 'HP', model: 'ProDesk 600', serial: 'SN-776655',
+            location: 'Delhi', status: 'In Stock', assignedTo: 'Unassigned',
+            cost: '65000', purchaseDate: '2023-11-20', warranty: '2 Years', condition: 'New',
+            remarks: 'Finance team system',
+            specs: [
+                { label: 'Outlook ID', value: 'alice.smith@company.com' },
+                { label: 'MAC ID', value: '11:22:33:44:55:66' },
+                { label: 'RAM', value: '16GB DDR4' },
+                { label: 'Storage', value: '512GB SSD' }
+            ]
+        },
+        {
+            id: 'AST-LAP-03', category: 'Laptop', brand: 'Lenovo', model: 'ThinkPad T14', serial: 'SN-994422',
+            location: 'Mumbai', status: 'In Stock', assignedTo: 'Unassigned',
+            cost: '95000', purchaseDate: '2024-02-01', warranty: '3 Years', condition: 'New',
+            remarks: 'Stock Unit',
+            specs: [
+                { label: 'Outlook ID', value: 'user3@company.com' },
+                { label: 'MAC ID', value: '00:1A:2B:3C:4D:99' }
+            ]
+        }
+    ];
+
+    const DEFAULT_ASSIGNMENTS = [
+        { id: 1, userName: 'Ramesh Kumar', userOutlook: 'ramesh@company.com', dept: 'Engineering', assetId: 'AST-LAP-01', startTime: '2025-01-15 09:00', stopTime: '2026-01-15 18:00', status: 'Stopped' },
+        { id: 2, userName: 'Suresh Patel', userOutlook: 'suresh@company.com', dept: 'Marketing', assetId: 'AST-LAP-01', startTime: '2026-01-20 10:00', stopTime: 'Currently Active', status: 'Active' }
+    ];
+
+    const DEFAULT_TICKETS = [
+        { id: 'TCK-1001', userName: 'Suresh Patel', userEmail: 'suresh@company.com', assetId: 'AST-LAP-01', category: 'Hardware Failure', priority: 'High', description: 'Screen flickering intermittently during video calls.', createdDate: '2026-02-02 10:30', status: 'In Progress' },
+        { id: 'TCK-1002', userName: 'Ramesh Kumar', userEmail: 'ramesh@company.com', assetId: 'AST-SYS-02', category: 'Software Issue', priority: 'Medium', description: 'Requires administrative rights for software installation.', createdDate: '2026-02-05 14:15', status: 'Open' }
+    ];
+
+    /* Per-category extra spec fields, shared by the Add/Edit Asset form and CSV import */
+    const CATEGORY_SCHEMAS = {
+        "Laptop": [
+            { id: 'spec_outlook', label: 'Outlook ID', placeholder: 'e.g. user@company.com' },
+            { id: 'spec_mac', label: 'MAC ID', placeholder: 'e.g. 00:1A:2B:3C:4D:5E' },
+            { id: 'spec_ram', label: 'RAM', placeholder: 'e.g. 16GB / 32GB' },
+            { id: 'spec_storage', label: 'Storage', placeholder: 'e.g. 512GB SSD' },
+            { id: 'spec_processor', label: 'Processor', placeholder: 'e.g. Intel i7 / M2' },
+            { id: 'spec_os', label: 'Operating System', placeholder: 'e.g. Windows 11 / macOS' }
+        ],
+        "Desktop (System)": [
+            { id: 'spec_outlook', label: 'Outlook ID', placeholder: 'e.g. user@company.com' },
+            { id: 'spec_mac', label: 'MAC ID', placeholder: 'e.g. 00:1A:2B:3C:4D:5E' },
+            { id: 'spec_ram', label: 'RAM', placeholder: 'e.g. 32GB DDR4' },
+            { id: 'spec_storage', label: 'Storage', placeholder: 'e.g. 1TB SSD' },
+            { id: 'spec_gpu', label: 'Graphics Card', placeholder: 'e.g. RTX 3060' }
+        ],
+        "Printer": [
+            { id: 'spec_print_type', label: 'Printer Type', placeholder: 'e.g. LaserJet' },
+            { id: 'spec_ip', label: 'IP Address', placeholder: 'e.g. 192.168.1.150' }
+        ],
+        "Router": [
+            { id: 'spec_ip', label: 'IP Address', placeholder: 'e.g. 192.168.1.1' },
+            { id: 'spec_ports', label: 'Ports Count', placeholder: 'e.g. 8 Ports' }
+        ],
+        "Mobile": [
+            { id: 'spec_imei', label: 'IMEI Number', placeholder: 'e.g. 356938035641098' }
+        ],
+        "Storage & Backup": [
+            { id: 'spec_capacity', label: 'Total Capacity', placeholder: 'e.g. 16TB' }
+        ],
+        "Display & AV Equipment": [
+            { id: 'spec_resolution', label: 'Resolution', placeholder: 'e.g. 4K UHD' }
+        ],
+        "Security & Surveillance": [
+            { id: 'spec_ip', label: 'IP Address', placeholder: 'e.g. 192.168.2.50' }
+        ],
+        "Other IT Equipment": [
+            { id: 'spec_custom', label: 'Specification', placeholder: 'Custom Detail' }
+        ]
+    };
+
+    /* ---------------- Low level storage helpers ---------------- */
+
+    function _readKey(key, fallback) {
+        try {
+            const raw = localStorage.getItem(key);
+            return raw ? JSON.parse(raw) : fallback;
+        } catch (e) {
+            console.error('data.js: failed to read', key, e);
+            return fallback;
+        }
+    }
+
+    function _writeKey(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+        // storage events only fire in OTHER tabs, so also notify listeners in THIS tab
+        window.dispatchEvent(new CustomEvent('it-data-changed', { detail: { key } }));
+    }
+
+    function getAssets() { return _readKey(STORAGE_KEYS.ASSETS, DEFAULT_ASSETS); }
+    function setAssets(data) { _writeKey(STORAGE_KEYS.ASSETS, data); }
+
+    function getAssignments() { return _readKey(STORAGE_KEYS.ASSIGNMENTS, DEFAULT_ASSIGNMENTS); }
+    function setAssignments(data) { _writeKey(STORAGE_KEYS.ASSIGNMENTS, data); }
+
+    function getTickets() { return _readKey(STORAGE_KEYS.TICKETS, DEFAULT_TICKETS); }
+    function setTickets(data) { _writeKey(STORAGE_KEYS.TICKETS, data); }
+
+    /* Make sure localStorage has data the very first time any page is opened */
+    const AUTH_SESSION_KEY = 'it_session';
+    function getSession() {
+        try { return JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY)); } catch (e) { return null; }
+    }
+    function logoutAdmin() {
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        window.location.href = 'login.html';
+    }
+    function renderLoggedInUser() {
+        const session = getSession();
+        const el = document.getElementById('loggedInUserName');
+        if (el && session) el.innerText = session.fullName || session.username;
+    }
+
+    function ensureSeedData() {
+        if (!localStorage.getItem(STORAGE_KEYS.ASSETS)) setAssets(DEFAULT_ASSETS);
+        if (!localStorage.getItem(STORAGE_KEYS.ASSIGNMENTS)) setAssignments(DEFAULT_ASSIGNMENTS);
+        if (!localStorage.getItem(STORAGE_KEYS.TICKETS)) setTickets(DEFAULT_TICKETS);
+    }
+
+    /* Keep each asset's status / assignedTo in sync with the Assignments list.
+       The Assignments list (managed on user.html) is the source of truth for
+       "who currently has this asset". Returns the (possibly updated) assets array. */
+    function reconcileAssetAssignments() {
+        const assets = getAssets();
+        const assignments = getAssignments();
+        let changed = false;
+
+        assets.forEach(asset => {
+            const active = assignments.find(a => a.assetId === asset.id && a.status === 'Active');
+            const newAssignedTo = active ? active.userName : 'Unassigned';
+            const newStatus = active ? 'Active' : 'In Stock';
+            if (asset.assignedTo !== newAssignedTo || asset.status !== newStatus) {
+                asset.assignedTo = newAssignedTo;
+                asset.status = newStatus;
+                changed = true;
+            }
+        });
+
+        if (changed) setAssets(assets);
+        return assets;
+    }
+
+    /* Generate a unique Asset ID, e.g. AST-LAP-04, avoiding collisions */
+    function generateAssetId(categoryHint) {
+        const map = {
+            'Laptop': 'LAP', 'Desktop (System)': 'SYS', 'Printer': 'PRN', 'Router': 'RTR',
+            'Mobile': 'MOB', 'Storage & Backup': 'STG', 'Display & AV Equipment': 'AV',
+            'Security & Surveillance': 'SEC', 'Other IT Equipment': 'OTH'
+        };
+        const prefix = map[categoryHint] || 'GEN';
+        const assets = getAssets();
+        let n = 1, id;
+        do {
+            id = `AST-${prefix}-${String(n).padStart(2, '0')}`;
+            n++;
+        } while (assets.some(a => a.id === id));
+        return id;
+    }
+
+    /* Register a handler that fires whenever data changes — in this tab
+       (custom event), another tab (storage event), or when the tab regains focus. */
+    function onDataChange(handler) {
+        window.addEventListener('storage', function (e) {
+            if (Object.values(STORAGE_KEYS).includes(e.key)) handler(e.key);
+        });
+        window.addEventListener('it-data-changed', function (e) {
+            handler(e.detail.key);
+        });
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') handler(null);
+        });
+    }
+    </script>
+    <script>
+        // Assets, Assignments and Tickets are read from / written to the shared
+        // localStorage records defined in data.js — see getAssets/setAssets,
+        // getAssignments/setAssignments there.
+
+        window.onload = function() {
+            renderLoggedInUser();
+            ensureSeedData();
+            reconcileAssetAssignments();
+            renderAssignmentsTable();
+            setDefaultDateTime();
+        };
+
+        // Keep this page in sync whenever data changes — in this tab, another
+        // tab, or when switching back to this tab.
+        onDataChange(function () {
+            renderAssignmentsTable();
+        });
+
+        function showBanner(msg) {
+            const banner = document.getElementById('toastBanner');
+            banner.innerHTML = msg;
+            banner.className = 'toast-banner show';
+            setTimeout(() => banner.className = 'toast-banner', 4000);
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        function setDefaultDateTime() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('assignStartDateTime').value = now.toISOString().slice(0, 16);
+        }
+
+        function openAssignModal() {
+            const select = document.getElementById('assignAssetSelect');
+            select.innerHTML = '';
+
+            const assets = getAssets();
+            // Match any asset marked as 'In Stock' or 'Available'
+            const availableAssets = assets.filter(a => a.status === 'In Stock' || a.status === 'Available');
+
+            if (availableAssets.length === 0) {
+                alert('No available "In Stock" assets found. Please return an assigned asset first or add stock via the Assets page.');
+                return;
+            }
+
+            availableAssets.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.id;
+                opt.innerText = `${a.id} - ${a.brand} ${a.model} (${a.serial})`;
+                select.appendChild(opt);
+            });
+
+            document.getElementById('assignForm').reset();
+            setDefaultDateTime();
+            document.getElementById('assignModal').classList.add('active');
+        }
+
+        function saveAssignment() {
+            const userName = document.getElementById('userName').value.trim();
+            const userOutlook = document.getElementById('userOutlook').value.trim();
+            const dept = document.getElementById('userDept').value.trim() || 'General';
+            const assetId = document.getElementById('assignAssetSelect').value;
+            const startTime = document.getElementById('assignStartDateTime').value.replace('T', ' ');
+
+            let assets = getAssets();
+            let assignments = getAssignments();
+
+            const targetAsset = assets.find(a => a.id === assetId);
+
+            if (targetAsset) {
+                targetAsset.assignedTo = userName;
+                targetAsset.status = 'Active'; // Update asset inventory state
+
+                assignments.unshift({
+                    id: Date.now(),
+                    userName,
+                    userOutlook,
+                    dept,
+                    assetId: targetAsset.id,
+                    startTime,
+                    stopTime: 'Currently Active',
+                    status: 'Active'
+                });
+
+                setAssets(assets);
+                setAssignments(assignments);
+
+                closeModal('assignModal');
+                renderAssignmentsTable();
+
+                showBanner(`Assigned <strong>${targetAsset.id}</strong> to <strong>${userName}</strong>!`);
+            }
+        }
+
+        function stopUsage(assignmentId) {
+            let assignments = getAssignments();
+            let assets = getAssets();
+
+            const assign = assignments.find(a => a.id === assignmentId);
+            if (!assign) return;
+
+            const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+            if (confirm(`Stop usage for user ${assign.userName} and return asset ${assign.assetId}?`)) {
+                assign.stopTime = nowStr;
+                assign.status = 'Stopped';
+
+                const targetAsset = assets.find(a => a.id === assign.assetId);
+                if (targetAsset) {
+                    targetAsset.assignedTo = 'Unassigned';
+                    targetAsset.status = 'In Stock';
+                }
+
+                setAssets(assets);
+                setAssignments(assignments);
+
+                renderAssignmentsTable();
+
+                showBanner(`Usage stopped for ${assign.userName}. Asset <strong>${assign.assetId}</strong> returned to Stock.`);
+            }
+        }
+
+        function openUserLaptopHistoryPopup(assetId, currentUserName) {
+            const modal = document.getElementById('userHistoryModal');
+            const title = document.getElementById('userHistoryModalTitle');
+            const content = document.getElementById('userHistoryTimelineContent');
+
+            const assets = getAssets();
+            const assignments = getAssignments();
+
+            const targetAsset = assets.find(a => a.id === assetId);
+            const assetTitle = targetAsset ? `${targetAsset.brand} ${targetAsset.model}` : '';
+            title.innerHTML = `Usage History for Laptop: ${assetId} ${assetTitle}`;
+
+            const laptopLogs = assignments.filter(a => a.assetId === assetId);
+
+            if (laptopLogs.length === 0) {
+                content.innerHTML = `<p style="color:#94a3b8; margin-top:15px;">No previous history found for this asset.</p>`;
+            } else {
+                let html = `<p style="font-size:0.85rem; color:#94a3b8; margin-bottom:15px;">All users who have ever been assigned laptop <strong>${assetId}</strong>:</p>`;
+                html += `<div class="timeline">`;
+
+                laptopLogs.forEach((log, idx) => {
+                    const isCurrent = log.status === 'Active';
+                    html += `
+                        <div class="timeline-item ${isCurrent ? 'active' : 'stopped'}">
+                            <div class="timeline-date">User Record #${laptopLogs.length - idx}</div>
+                            <div class="timeline-content">
+                                <div style="font-size:1rem; font-weight:bold; color:${isCurrent ? '#34d399' : '#f8fafc'};">
+                                    👤 ${log.userName} (${log.userOutlook})
+                                </div>
+                                <div style="font-size:0.85rem; color:#cbd5e1; margin-top:6px;">
+                                    🏛️ <strong>Department:</strong> ${log.dept}<br>
+                                    🟢 <strong>Started Using:</strong> ${log.startTime}<br>
+                                    🔴 <strong>Stopped / Returned:</strong> ${log.stopTime}
+                                </div>
+                                <div style="margin-top:8px;">
+                                    <span class="status-badge ${isCurrent ? 'status-active' : 'status-stopped'}">
+                                        ${isCurrent ? 'Currently Active User' : 'Returned / Stopped'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+                content.innerHTML = html;
+            }
+
+            modal.classList.add('active');
+        }
+
+        function renderAssignmentsTable() {
+            const assignments = getAssignments();
+            const tbody = document.getElementById('assignmentsTableBody');
+            const search = document.getElementById('userSearchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('userStatusFilter').value;
+
+            tbody.innerHTML = '';
+
+            assignments.forEach(asg => {
+                const matchesSearch = asg.userName.toLowerCase().includes(search) || asg.userOutlook.toLowerCase().includes(search) || asg.assetId.toLowerCase().includes(search);
+                const matchesStatus = !statusFilter || asg.status === statusFilter;
+
+                if (matchesSearch && matchesStatus) {
+                    const isRunning = asg.status === 'Active';
+                    const badgeClass = isRunning ? 'status-active' : 'status-stopped';
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>${asg.userName}</strong></td>
+                        <td>${asg.userOutlook}</td>
+                        <td>${asg.dept}</td>
+                        <td><strong style="color: #38bdf8;">${asg.assetId}</strong></td>
+                        <td><span style="color:#34d399;">🟢 ${asg.startTime}</span></td>
+                        <td><span style="color:${isRunning ? '#fbbf24' : '#fca5a5'};">${isRunning ? 'In Use...' : '🔴 ' + asg.stopTime}</span></td>
+                        <td><span class="status-badge ${badgeClass}">${isRunning ? 'Currently Active' : 'Stopped'}</span></td>
+                        <td>
+                            <div class="action-cell">
+                                <button class="btn-history" onclick="openUserLaptopHistoryPopup('${asg.assetId}', '${asg.userName}')">📜 View History</button>
+                                ${isRunning ? `<button class="btn btn-stop" onclick="stopUsage(${asg.id})">Stop / Return</button>` : ''}
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            });
+        }
+
+        function exportAssignmentsCSV() {
+            const assignments = getAssignments();
+            if (assignments.length === 0) {
+                alert("No assignment history available to export.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,User Name,Outlook ID,Department,Asset ID,Start Time,Stop Time,Status\n";
+            assignments.forEach(a => {
+                csvContent += `"${a.userName}","${a.userOutlook}","${a.dept}","${a.assetId}","${a.startTime}","${a.stopTime}","${a.status}"\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "User_Asset_Assignments.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>

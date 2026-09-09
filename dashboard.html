@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script>
+        /* Lightweight client-side session guard — see login.html for details
+           and important caveats about what this does and doesn't protect. */
+        if (!sessionStorage.getItem('it_session')) {
+            window.location.href = 'login.html';
+        }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Master Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { display: flex; background-color: #0f172a; color: #f8fafc; height: 100vh; overflow: hidden; }
+
+        /* SIDEBAR */
+        .sidebar { width: 220px; background-color: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; flex-shrink: 0; }
+        .menu-title { background-color: #0f172a; color: #ffffff; padding: 15px; text-align: center; font-weight: bold; letter-spacing: 1px; border-bottom: 1px solid #334155; }
+        .user-bar { padding: 10px 15px; background-color: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #94a3b8; }
+        .user-bar a { color: #f87171; text-decoration: none; font-weight: bold; }
+        .user-bar a:hover { text-decoration: underline; }
+        .menu-item { padding: 14px 20px; color: #ffffff; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; border-bottom: 1px solid #334155; background-color: #1e293b; cursor: pointer; transition: 0.2s; text-decoration: none; display: block; }
+        .menu-item:hover { background-color: #2563eb; }
+        .menu-item.active { background-color: #f59e0b; color: #0f172a; }
+
+        /* MAIN CONTENT AREA */
+        .main-content { flex: 1; padding: 25px; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
+        .header-title { font-size: 1.8rem; margin-bottom: 20px; color: #38bdf8; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }
+
+        .section-header-container { display: flex; justify-content: space-between; align-items: center; margin: 15px 0 10px 0; border-bottom: 1px dashed #334155; padding-bottom: 4px; }
+        .section-header { font-size: 0.85rem; color: #f59e0b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* TOP GRAPHIC METRIC CARDS */
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 10px; }
+        .stat-card-graphic {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .stat-card-graphic:hover { transform: translateY(-3px); border-color: #38bdf8; }
+        .stat-card-graphic .info h3 { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; font-weight: bold; }
+        .stat-card-graphic .info .stat-value { font-size: 2rem; font-weight: 800; }
+        .stat-card-graphic .card-icon-badge {
+            width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+        }
+
+        /* HORIZONTAL SLIDER CAROUSEL */
+        .slider-btn-group { display: flex; gap: 6px; }
+        .slider-btn { background: #1e293b; border: 1px solid #334155; color: #38bdf8; width: 28px; height: 28px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .slider-btn:hover { background: #2563eb; color: #ffffff; }
+
+        .slider-wrapper {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            gap: 15px;
+            overflow-x: scroll !important;
+            overflow-y: hidden !important;
+            scroll-behavior: smooth;
+            padding: 10px 5px 15px 5px;
+            align-items: center;
+            min-height: 110px !important;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .slider-wrapper::-webkit-scrollbar { height: 6px; }
+        .slider-wrapper::-webkit-scrollbar-track { background: #0f172a; }
+        .slider-wrapper::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        .slider-card-graphic {
+            flex: 0 0 160px !important;
+            width: 160px !important;
+            height: 85px !important;
+            background: linear-gradient(180deg, #1e293b 0%, #111827 100%);
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+            box-sizing: border-box;
+        }
+        .slider-card-graphic:hover { border-color: #38bdf8; transform: translateY(-2px); }
+        .slider-card-graphic .cat-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: #94a3b8; font-weight: bold; text-transform: uppercase; gap: 4px; }
+        .slider-card-graphic .cat-header span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .slider-card-graphic .cat-value { font-size: 1.5rem; font-weight: 700; color: #ffffff; text-align: right; }
+
+        /* PANELS GRID & CIRCULAR PROGRESS GAUGES */
+        .dashboard-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 900px) { .dashboard-sections { grid-template-columns: 1fr; } }
+
+        .panel { background-color: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .panel h2 { font-size: 0.95rem; color: #38bdf8; text-transform: uppercase; font-weight: bold; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+
+        .chart-ring-grid { display: flex; justify-content: space-around; align-items: center; padding: 10px 0; flex-wrap: wrap; gap: 10px; }
+        .ring-container { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .ring-label { font-size: 0.8rem; color: #cbd5e1; font-weight: 600; text-transform: uppercase; }
+
+        .circle-chart { width: 80px; height: 80px; position: relative; }
+        .circle-chart svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+        .circle-chart circle { fill: none; stroke-width: 3.8; stroke-linecap: round; }
+        .circle-chart .progress-circle { transition: stroke-dasharray 0.8s ease-in-out; }
+        .circle-chart .percentage-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.85rem; font-weight: bold; color: #ffffff; }
+
+        /* ACTIVITY LISTS & BADGES */
+        .activity-list { list-style: none; }
+        .activity-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #334155; font-size: 0.85rem; gap: 10px; }
+        .activity-item:last-child { border-bottom: none; }
+
+        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+        .status-active { background-color: rgba(6, 78, 59, 0.6); color: #34d399; border: 1px solid #059669; }
+        .status-stock { background-color: rgba(120, 53, 15, 0.6); color: #fbbf24; border: 1px solid #d97706; }
+        .status-danger { background-color: rgba(127, 29, 29, 0.6); color: #fca5a5; border: 1px solid #dc2626; }
+        .status-info { background-color: rgba(2, 132, 199, 0.6); color: #38bdf8; border: 1px solid #0284c7; }
+
+        .empty-note { color: #64748b; font-size: 0.85rem; font-style: italic; padding: 10px 0; }
+        .toast-banner { display: none; position: fixed; top: 20px; right: 20px; background: #0284c7; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 200; font-size: 0.9rem; border-left: 5px solid #38bdf8; }
+    </style>
+</head>
+<body>
+
+    <div id="toastBanner" class="toast-banner"></div>
+
+    <!-- SIDEBAR NAV -->
+    <div class="sidebar">
+        <div class="menu-title">IT ADMIN</div>
+        <div class="user-bar">
+            <span>👤 <span id="loggedInUserName">Admin</span></span>
+            <a href="#" onclick="logoutAdmin(); return false;">Logout</a>
+        </div>
+        <a href="dashboard.html" class="menu-item active">DASHBOARD</a>
+        <a href="asset.html" class="menu-item">ASSETS</a>
+        <a href="user.html" class="menu-item">USERS & ASSIGNMENTS</a>
+        <a href="ticket.html" class="menu-item">SUPPORT TICKETS</a>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+        <div class="header-title">IT Master Dashboard</div>
+
+        <!-- TOP OVERVIEW METRICS WITH GRAPHIC BADGES -->
+        <div class="section-header-container">
+            <div class="section-header">System Overview</div>
+        </div>
+        <div class="metrics-grid">
+            <div class="stat-card-graphic">
+                <div class="info">
+                    <h3>Total Assets</h3>
+                    <div class="stat-value" id="valTotalAssets" style="color: #38bdf8;">0</div>
+                </div>
+                <div class="card-icon-badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">📦</div>
+            </div>
+            <div class="stat-card-graphic">
+                <div class="info">
+                    <h3>In Stock</h3>
+                    <div class="stat-value" id="valInStock" style="color: #fbbf24;">0</div>
+                </div>
+                <div class="card-icon-badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">🏬</div>
+            </div>
+            <div class="stat-card-graphic">
+                <div class="info">
+                    <h3>Open Tickets</h3>
+                    <div class="stat-value" id="valActiveTickets" style="color: #34d399;">0</div>
+                </div>
+                <div class="card-icon-badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">🎫</div>
+            </div>
+            <div class="stat-card-graphic">
+                <div class="info">
+                    <h3>High Priority</h3>
+                    <div class="stat-value" id="valHighPriority" style="color: #fca5a5;">0</div>
+                </div>
+                <div class="card-icon-badge" style="background: rgba(252, 165, 165, 0.15); color: #fca5a5;">🔥</div>
+            </div>
+        </div>
+
+        <!-- GRAPHIC CATEGORY CAROUSEL (uses YOUR real asset categories) -->
+        <div class="section-header-container">
+            <div class="section-header">All Assets Category Breakdown</div>
+            <div class="slider-btn-group">
+                <button class="slider-btn" onclick="scrollSlider(-200)">&lt;</button>
+                <button class="slider-btn" onclick="scrollSlider(200)">&gt;</button>
+            </div>
+        </div>
+
+        <div class="slider-wrapper" id="categorySlider">
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Laptop</span><span>💻</span></div>
+                <div class="cat-value" id="valLaptop">0</div>
+            </div>
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Desktop</span><span>🖥️</span></div>
+                <div class="cat-value" id="valDesktop">0</div>
+            </div>
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Printer</span><span>🖨️</span></div>
+                <div class="cat-value" id="valPrinter">0</div>
+            </div>
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Router</span><span>🌐</span></div>
+                <div class="cat-value" id="valRouter">0</div>
+            </div>
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Mobile</span><span>📱</span></div>
+                <div class="cat-value" id="valMobile">0</div>
+            </div>
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Storage & Backup</span><span>💾</span></div>
+                <div class="cat-value" id="valStorage">0</div>
+            </div>
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Display & AV</span><span>📺</span></div>
+                <div class="cat-value" id="valDisplayAV">0</div>
+            </div>
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Security</span><span>🔒</span></div>
+                <div class="cat-value" id="valSecurity">0</div>
+            </div>
+            <div class="slider-card-graphic">
+                <div class="cat-header"><span>Other IT</span><span>🧰</span></div>
+                <div class="cat-value" id="valOtherIT">0</div>
+            </div>
+        </div>
+
+        <!-- TWO COLUMN CHARTS & RECENT ACTIVITY -->
+        <div class="dashboard-sections" style="margin-top: 10px;">
+            <!-- Asset Status Gauge Chart -->
+            <div class="panel">
+                <h2>Asset Distribution</h2>
+                <div class="chart-ring-grid" id="assetGaugeGrid"></div>
+            </div>
+
+            <!-- Support Ticket Gauge Chart -->
+            <div class="panel">
+                <h2>Ticket Resolution Status</h2>
+                <div class="chart-ring-grid" id="ticketGaugeGrid"></div>
+            </div>
+
+            <!-- Recent Support Tickets List -->
+            <div class="panel" style="margin-top: 10px;">
+                <h2>Recent Tickets <a href="ticket.html" style="font-size: 0.75rem; color: #38bdf8; text-decoration: none;">View All &rarr;</a></h2>
+                <ul class="activity-list" id="recentTicketsList"></ul>
+            </div>
+
+            <!-- Recent Asset Deployments List -->
+            <div class="panel" style="margin-top: 10px;">
+                <h2>Recent Deployments <a href="asset.html" style="font-size: 0.75rem; color: #38bdf8; text-decoration: none;">View All &rarr;</a></h2>
+                <ul class="activity-list" id="recentAssignmentsList"></ul>
+            </div>
+
+            <!-- Warranty Expiring Soon -->
+            <div class="panel" style="margin-top: 10px; grid-column: span 2;">
+                <h2>🛡️ Warranty Expiring Soon (next 90 days) <a href="asset.html" style="font-size: 0.75rem; color: #38bdf8; text-decoration: none;">View All &rarr;</a></h2>
+                <ul class="activity-list" id="warrantyList"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /* =====================================================================
+       Shared data layer (same keys/logic as the other admin pages). Inlined
+       so this page works standalone, with no dependency on any other file
+       loading correctly.
+       ===================================================================== */
+    const STORAGE_KEYS = { ASSETS: 'it_assets', ASSIGNMENTS: 'it_assignments', TICKETS: 'it_tickets' };
+
+    const AUTH_SESSION_KEY = 'it_session';
+    function getSession() {
+        try { return JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY)); } catch (e) { return null; }
+    }
+    function logoutAdmin() {
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        window.location.href = 'login.html';
+    }
+    function renderLoggedInUser() {
+        const session = getSession();
+        const el = document.getElementById('loggedInUserName');
+        if (el && session) el.innerText = session.fullName || session.username;
+    }
+
+    const DEFAULT_ASSETS = [
+        { id: 'AST-LAP-01', category: 'Laptop', brand: 'Dell', model: 'XPS 15', serial: 'SN-882910', location: 'Mumbai', status: 'Active', assignedTo: 'Suresh Patel', cost: '135000', purchaseDate: '2024-01-15', warranty: '3 Years', condition: 'Good', remarks: 'Primary workstation', specs: [] },
+        { id: 'AST-SYS-02', category: 'Desktop (System)', brand: 'HP', model: 'ProDesk 600', serial: 'SN-776655', location: 'Delhi', status: 'In Stock', assignedTo: 'Unassigned', cost: '65000', purchaseDate: '2023-11-20', warranty: '2 Years', condition: 'New', remarks: 'Finance team system', specs: [] },
+        { id: 'AST-LAP-03', category: 'Laptop', brand: 'Lenovo', model: 'ThinkPad T14', serial: 'SN-994422', location: 'Mumbai', status: 'In Stock', assignedTo: 'Unassigned', cost: '95000', purchaseDate: '2024-02-01', warranty: '3 Years', condition: 'New', remarks: 'Stock Unit', specs: [] }
+    ];
+    const DEFAULT_ASSIGNMENTS = [
+        { id: 1, userName: 'Ramesh Kumar', userOutlook: 'ramesh@company.com', dept: 'Engineering', assetId: 'AST-LAP-01', startTime: '2025-01-15 09:00', stopTime: '2026-01-15 18:00', status: 'Stopped' },
+        { id: 2, userName: 'Suresh Patel', userOutlook: 'suresh@company.com', dept: 'Marketing', assetId: 'AST-LAP-01', startTime: '2026-01-20 10:00', stopTime: 'Currently Active', status: 'Active' }
+    ];
+    const DEFAULT_TICKETS = [
+        { id: 'TCK-1001', userName: 'Suresh Patel', userEmail: 'suresh@company.com', assetId: 'AST-LAP-01', category: 'Hardware Failure', priority: 'High', description: 'Screen flickering intermittently during video calls.', createdDate: '2026-02-02 10:30', status: 'In Progress' },
+        { id: 'TCK-1002', userName: 'Ramesh Kumar', userEmail: 'ramesh@company.com', assetId: 'AST-SYS-02', category: 'Software Issue', priority: 'Medium', description: 'Requires administrative rights for software installation.', createdDate: '2026-02-05 14:15', status: 'Open' }
+    ];
+
+    function _readKey(key, fallback) {
+        try {
+            const raw = localStorage.getItem(key);
+            return raw ? JSON.parse(raw) : fallback;
+        } catch (e) {
+            console.error('Failed to read', key, e);
+            return fallback;
+        }
+    }
+    function _writeKey(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+    }
+    function getAssets() { return _readKey(STORAGE_KEYS.ASSETS, DEFAULT_ASSETS); }
+    function setAssets(data) { _writeKey(STORAGE_KEYS.ASSETS, data); }
+    function getAssignments() { return _readKey(STORAGE_KEYS.ASSIGNMENTS, DEFAULT_ASSIGNMENTS); }
+    function getTickets() { return _readKey(STORAGE_KEYS.TICKETS, DEFAULT_TICKETS); }
+
+    function ensureSeedData() {
+        if (!localStorage.getItem(STORAGE_KEYS.ASSETS)) setAssets(DEFAULT_ASSETS);
+    }
+
+    function reconcileAssetAssignments() {
+        const assets = getAssets();
+        const assignments = getAssignments();
+        let changed = false;
+        assets.forEach(asset => {
+            const active = assignments.find(a => a.assetId === asset.id && a.status === 'Active');
+            const newAssignedTo = active ? active.userName : 'Unassigned';
+            const newStatus = active ? 'Active' : 'In Stock';
+            if (asset.assignedTo !== newAssignedTo || asset.status !== newStatus) {
+                asset.assignedTo = newAssignedTo;
+                asset.status = newStatus;
+                changed = true;
+            }
+        });
+        if (changed) setAssets(assets);
+        return assets;
+    }
+
+    function onDataChange(handler) {
+        window.addEventListener('storage', function (e) {
+            if (Object.values(STORAGE_KEYS).includes(e.key)) handler(e.key);
+        });
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') handler(null);
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        renderLoggedInUser();
+        ensureSeedData();
+        reconcileAssetAssignments();
+        loadDashboardData();
+    });
+
+    onDataChange(function () {
+        loadDashboardData();
+    });
+
+    function scrollSlider(distance) {
+        const slider = document.getElementById('categorySlider');
+        slider.scrollBy({ left: distance, behavior: 'smooth' });
+    }
+
+    /* Parse a free-text warranty field like "3 Years" / "18 Months" and, combined
+       with purchaseDate, estimate an expiry date. Returns null if not parseable. */
+    function estimateWarrantyExpiry(asset) {
+        if (!asset.purchaseDate || !asset.warranty) return null;
+        const match = asset.warranty.match(/(\d+)/);
+        if (!match) return null;
+        const n = parseInt(match[1], 10);
+        const isMonths = /month/i.test(asset.warranty);
+        const purchase = new Date(asset.purchaseDate);
+        if (isNaN(purchase.getTime())) return null;
+        const expiry = new Date(purchase);
+        if (isMonths) expiry.setMonth(expiry.getMonth() + n);
+        else expiry.setFullYear(expiry.getFullYear() + n);
+        return expiry;
+    }
+
+    function getExpiringWarranties(assets) {
+        const now = new Date();
+        const horizon = new Date();
+        horizon.setDate(horizon.getDate() + 90);
+        return assets
+            .map(a => ({ asset: a, expiry: estimateWarrantyExpiry(a) }))
+            .filter(x => x.expiry && x.expiry <= horizon)
+            .sort((a, b) => a.expiry - b.expiry);
+    }
+
+    function loadDashboardData() {
+        const assets = typeof getAssets === "function" ? getAssets() : [];
+        const tickets = typeof getTickets === "function" ? getTickets() : [];
+        const assignments = typeof getAssignments === "function" ? getAssignments() : [];
+
+        // 1. Metric Counts
+        const totalAssets = assets.length;
+        const inStock = assets.filter(a => a.status === 'In Stock').length;
+        const openTickets = tickets.filter(t => t.status === 'Open' || t.status === 'In Progress').length;
+        const highPriority = tickets.filter(t => t.priority === 'High' && t.status !== 'Resolved').length;
+
+        document.getElementById('valTotalAssets').textContent = totalAssets;
+        document.getElementById('valInStock').textContent = inStock;
+        document.getElementById('valActiveTickets').textContent = openTickets;
+        document.getElementById('valHighPriority').textContent = highPriority;
+
+        // 2. Category Totals (using YOUR real 9 asset categories)
+        const countCat = (categoryName) => assets.filter(a => a.category === categoryName).length;
+        document.getElementById('valLaptop').textContent = countCat('Laptop');
+        document.getElementById('valDesktop').textContent = countCat('Desktop (System)');
+        document.getElementById('valPrinter').textContent = countCat('Printer');
+        document.getElementById('valRouter').textContent = countCat('Router');
+        document.getElementById('valMobile').textContent = countCat('Mobile');
+        document.getElementById('valStorage').textContent = countCat('Storage & Backup');
+        document.getElementById('valDisplayAV').textContent = countCat('Display & AV Equipment');
+        document.getElementById('valSecurity').textContent = countCat('Security & Surveillance');
+        document.getElementById('valOtherIT').textContent = countCat('Other IT Equipment');
+
+        // 3. Render Circular Ring Charts (Assets) — only real statuses: Active / In Stock
+        const activeCount = assets.filter(a => a.status === 'Active').length;
+
+        document.getElementById('assetGaugeGrid').innerHTML = `
+            ${renderGaugeRing('Active', activeCount, totalAssets, '#10b981')}
+            ${renderGaugeRing('In Stock', inStock, totalAssets, '#f59e0b')}
+        `;
+
+        // 4. Render Circular Ring Charts (Tickets)
+        const totalTickets = tickets.length || 1;
+        const openCount = tickets.filter(t => t.status === 'Open').length;
+        const progressCount = tickets.filter(t => t.status === 'In Progress').length;
+        const resolvedCount = tickets.filter(t => t.status === 'Resolved').length;
+
+        document.getElementById('ticketGaugeGrid').innerHTML = `
+            ${renderGaugeRing('Open', openCount, totalTickets, '#ef4444')}
+            ${renderGaugeRing('In Progress', progressCount, totalTickets, '#f59e0b')}
+            ${renderGaugeRing('Resolved', resolvedCount, totalTickets, '#10b981')}
+        `;
+
+        // 5. Render Recent Support Tickets
+        const recentTickets = [...tickets].reverse().slice(0, 4);
+        const ticketListEl = document.getElementById('recentTicketsList');
+        ticketListEl.innerHTML = recentTickets.length ? '' : '<li class="activity-item"><span class="empty-note">No tickets logged yet.</span></li>';
+
+        recentTickets.forEach(t => {
+            let badgeClass = t.status === 'Open' ? 'status-danger' : (t.status === 'In Progress' ? 'status-stock' : 'status-active');
+            ticketListEl.innerHTML += `
+                <li class="activity-item">
+                    <div>
+                        <strong>${t.id}</strong> - ${t.category} (${t.assetId})
+                        <br><small style="color: #94a3b8;">${t.userName}</small>
+                    </div>
+                    <span class="status-badge ${badgeClass}">${t.status}</span>
+                </li>
+            `;
+        });
+
+        // 6. Render Recent Deployments
+        const activeAssignments = [...assignments].filter(a => a.status === 'Active').reverse().slice(0, 4);
+        const assignListEl = document.getElementById('recentAssignmentsList');
+        assignListEl.innerHTML = activeAssignments.length ? '' : '<li class="activity-item"><span class="empty-note">No active deployments.</span></li>';
+
+        activeAssignments.forEach(a => {
+            assignListEl.innerHTML += `
+                <li class="activity-item">
+                    <div>
+                        <strong>${a.assetId}</strong> assigned to ${a.userName}
+                        <br><small style="color: #94a3b8;">${a.dept} | ${a.startTime}</small>
+                    </div>
+                    <span class="status-badge status-info">Active</span>
+                </li>
+            `;
+        });
+
+        // 7. Render Warranty Expiring Soon
+        const expiring = getExpiringWarranties(assets);
+        const warrantyListEl = document.getElementById('warrantyList');
+        warrantyListEl.innerHTML = expiring.length ? '' : '<li class="activity-item"><span class="empty-note">Nothing expiring in the next 90 days.</span></li>';
+
+        const now = new Date();
+        expiring.slice(0, 6).forEach(({ asset, expiry }) => {
+            const isOverdue = expiry < now;
+            const dateStr = expiry.toISOString().slice(0, 10);
+            warrantyListEl.innerHTML += `
+                <li class="activity-item">
+                    <div>
+                        <strong>${asset.id}</strong> — ${asset.brand} ${asset.model}
+                        <br><small style="color: #94a3b8;">Assigned to: ${asset.assignedTo}</small>
+                    </div>
+                    <span class="status-badge ${isOverdue ? 'status-danger' : 'status-stock'}">${isOverdue ? 'Expired ' : 'Expires '}${dateStr}</span>
+                </li>
+            `;
+        });
+    }
+
+    function renderGaugeRing(label, count, total, color) {
+        const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+        const dashArray = `${percentage}, 100`;
+        return `
+            <div class="ring-container">
+                <div class="circle-chart">
+                    <svg viewBox="0 0 36 36">
+                        <path stroke="#0f172a" stroke-width="3.8" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="progress-circle" stroke="${color}" stroke-dasharray="${dashArray}" stroke-width="3.8" stroke-linecap="round" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="percentage-text">${percentage}%</div>
+                </div>
+                <div class="ring-label">${label} (${count})</div>
+            </div>
+        `;
+    }
+    </script>
+</body>
+</html>

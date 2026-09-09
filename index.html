@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Admin - Login</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            width: 100%;
+            max-width: 380px;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        .header { text-align: center; margin-bottom: 25px; }
+        .header h1 { font-size: 1.4rem; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px; }
+        .header p { color: #94a3b8; font-size: 0.8rem; margin-top: 5px; }
+
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; font-weight: bold; }
+        input {
+            width: 100%; padding: 10px 12px; background: #0f172a; border: 1px solid #334155;
+            border-radius: 6px; color: #fff; font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+        }
+        input:focus { border-color: #38bdf8; }
+
+        .btn-login {
+            width: 100%; margin-top: 5px; padding: 12px; background-color: #16a34a; color: white;
+            border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: background 0.2s;
+        }
+        .btn-login:hover { background-color: #15803d; }
+
+        .error-msg {
+            display: none; background-color: #7f1d1d; color: #fca5a5; padding: 10px 12px;
+            border-radius: 6px; font-size: 0.85rem; margin-bottom: 15px; border-left: 4px solid #ef4444;
+        }
+        .error-msg.show { display: block; }
+
+        .public-link {
+            text-align: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #334155;
+            font-size: 0.8rem; color: #64748b;
+        }
+        .public-link a { color: #38bdf8; text-decoration: none; }
+        .public-link a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>IT Admin Panel</h1>
+            <p>Sign in to manage assets, assignments & tickets</p>
+        </div>
+
+        <div id="errorMsg" class="error-msg">Incorrect username or password.</div>
+
+        <form id="loginForm" onsubmit="event.preventDefault(); attemptLogin();">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="loginUsername" required placeholder="e.g. admin" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="loginPassword" required placeholder="••••••••" autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn-login">🔒 Sign In</button>
+        </form>
+
+        <div class="public-link">
+            Are you an employee reporting an issue?<br>
+            <a href="raise-ticket.html">Submit a support ticket here</a> — no login needed.
+        </div>
+    </div>
+
+    <script>
+        /* =====================================================================
+           Simple client-side admin login.
+           IMPORTANT: This is a lightweight access gate for a shared/local tool
+           (keeps casual walk-up access out) — it is NOT real security. Anyone
+           with browser dev tools can bypass it, and credentials are stored in
+           plain text in this browser's localStorage. For real access control
+           this needs to move to a proper backend with server-side auth.
+           ===================================================================== */
+        const AUTH_USERS_KEY = 'it_admin_users';
+        const AUTH_SESSION_KEY = 'it_session';
+
+        const DEFAULT_ADMIN_USERS = [
+            { username: 'admin', password: 'admin123', fullName: 'IT Administrator' }
+        ];
+
+        function getAdminUsers() {
+            try {
+                const raw = localStorage.getItem(AUTH_USERS_KEY);
+                return raw ? JSON.parse(raw) : DEFAULT_ADMIN_USERS;
+            } catch (e) {
+                return DEFAULT_ADMIN_USERS;
+            }
+        }
+
+        function ensureAuthSeed() {
+            if (!localStorage.getItem(AUTH_USERS_KEY)) {
+                localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(DEFAULT_ADMIN_USERS));
+            }
+        }
+
+        function getSession() {
+            try {
+                return JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY));
+            } catch (e) {
+                return null;
+            }
+        }
+
+        window.onload = function () {
+            ensureAuthSeed();
+            // Already logged in this tab? Skip straight to the app.
+            if (getSession()) {
+                window.location.href = 'dashboard.html';
+            }
+        };
+
+        function attemptLogin() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const errorEl = document.getElementById('errorMsg');
+
+            const users = getAdminUsers();
+            const match = users.find(u => u.username === username && u.password === password);
+
+            if (!match) {
+                errorEl.classList.add('show');
+                return;
+            }
+
+            errorEl.classList.remove('show');
+            sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({
+                username: match.username,
+                fullName: match.fullName || match.username,
+                loggedInAt: new Date().toISOString()
+            }));
+
+            window.location.href = 'dashboard.html';
+        }
+    </script>
+</body>
+</html>

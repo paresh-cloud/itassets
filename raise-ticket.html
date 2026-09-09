@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Support - Raise a Ticket</title>
+    <!-- Optional: EmailJS SDK for direct email delivery -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            min-height: 100vh; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            padding: 20px; 
+        }
+
+        .container {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            width: 100%;
+            max-width: 600px;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 25px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 15px;
+        }
+
+        .header h1 {
+            font-size: 1.6rem;
+            color: #38bdf8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .header p {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full-width {
+            grid-column: span 2;
+        }
+
+        label {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .req-star { color: #ef4444; }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: #38bdf8;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .btn-submit {
+            grid-column: span 2;
+            margin-top: 10px;
+            padding: 12px;
+            background-color: #16a34a;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-submit:hover {
+            background-color: #15803d;
+        }
+
+        .btn-submit:disabled {
+            background-color: #475569;
+            cursor: not-allowed;
+        }
+
+        /* SUCCESS MESSAGE BANNER */
+        .success-card {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .success-icon {
+            font-size: 3rem;
+            color: #34d399;
+            margin-bottom: 10px;
+        }
+
+        .ticket-badge {
+            display: inline-block;
+            background-color: #0369a1;
+            color: #fff;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin: 15px 0;
+        }
+
+        .btn-reset {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        .btn-reset:hover {
+            background-color: #2563eb;
+        }
+
+        @media (max-width: 480px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            .form-group.full-width, .btn-submit {
+                grid-column: span 1;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- FORM VIEW -->
+        <div id="formContainer">
+            <div class="header">
+                <h1>IT Support Desk</h1>
+                <p>Submit a request or report an issue with your hardware/software</p>
+            </div>
+
+            <form id="userTicketForm" onsubmit="event.preventDefault(); submitUserTicket();">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Your Full Name <span class="req-star">*</span></label>
+                        <input type="text" id="usrName" required placeholder="e.g. Ramesh Kumar">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Your Outlook / Email <span class="req-star">*</span></label>
+                        <input type="email" id="usrEmail" required placeholder="ramesh@company.com" oninput="autoFetchAsset()">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Asset ID (Laptop/Desktop) <span class="req-star">*</span></label>
+                        <input type="text" id="usrAsset" required placeholder="e.g. AST-LAP-01">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Issue Category <span class="req-star">*</span></label>
+                        <select id="usrCategory" required>
+                            <option value="Hardware Failure">Hardware Failure</option>
+                            <option value="Software Issue">Software Issue</option>
+                            <option value="Network / VPN">Network / VPN</option>
+                            <option value="Access & Identity">Access & Identity</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label>Urgency Level <span class="req-star">*</span></label>
+                        <select id="usrPriority" required>
+                            <option value="Low">Low - General query or non-blocking issue</option>
+                            <option value="Medium" selected>Medium - Affects work but workarounds exist</option>
+                            <option value="High">High - Completely blocked from working</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label>Problem Description <span class="req-star">*</span></label>
+                        <textarea id="usrDescription" required placeholder="Please describe the problem you are facing in detail..."></textarea>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="btn-submit">🚀 Submit Ticket</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- SUCCESS VIEW -->
+        <div id="successCard" class="success-card">
+            <div class="success-icon">✓</div>
+            <h2 style="color: #38bdf8;">Ticket Submitted Successfully!</h2>
+            <p style="color: #94a3b8; margin-top: 5px;">Your support request has been logged in the IT system.</p>
+            
+            <div style="margin-top: 15px;">Ticket Reference Number:</div>
+            <div id="displayTicketId" class="ticket-badge">TCK-1000</div>
+
+            <p style="font-size: 0.85rem; color: #cbd5e1;">An IT administrator will review your issue shortly.</p>
+
+            <button class="btn-reset" onclick="resetFormView()">Submit Another Ticket</button>
+        </div>
+    </div>
+
+    <script>
+        /* =====================================================================
+           Shared data layer (same keys/logic as the admin pages: asset.html,
+           user.html, ticket.html). Inlined here too so this page works
+           standalone, with no dependency on any other file loading correctly.
+           ===================================================================== */
+        const STORAGE_KEYS = { ASSETS: 'it_assets', ASSIGNMENTS: 'it_assignments', TICKETS: 'it_tickets' };
+
+        function _readKey(key, fallback) {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw ? JSON.parse(raw) : fallback;
+            } catch (e) {
+                console.error('Failed to read', key, e);
+                return fallback;
+            }
+        }
+        function _writeKey(key, data) {
+            localStorage.setItem(key, JSON.stringify(data));
+        }
+
+        function getAssignments() { return _readKey(STORAGE_KEYS.ASSIGNMENTS, []); }
+        function getTickets() { return _readKey(STORAGE_KEYS.TICKETS, []); }
+        function setTickets(data) { _writeKey(STORAGE_KEYS.TICKETS, data); }
+
+        /* Generate a unique Ticket ID (TCK-1001, TCK-1002, ...), scanning for
+           the next unused number so this page and the admin ticket.html page
+           can never generate the same ID even if used at the same time. */
+        function generateTicketId() {
+            const tickets = getTickets();
+            let n = 1001, id;
+            do {
+                id = `TCK-${n}`;
+                n++;
+            } while (tickets.some(t => t.id === id));
+            return id;
+        }
+
+        // Optional: Initialize EmailJS if you use email alerts
+        // (function() { emailjs.init("YOUR_PUBLIC_KEY"); })();
+
+        // Auto-fill Asset ID and Name from the currently active assignment for this email
+        function autoFetchAsset() {
+            const email = document.getElementById('usrEmail').value.trim().toLowerCase();
+            if (!email) return;
+
+            const assignments = getAssignments();
+            const match = assignments.find(a =>
+                a.userOutlook && a.userOutlook.toLowerCase() === email && a.status === 'Active'
+            );
+
+            if (match) {
+                if (match.assetId) document.getElementById('usrAsset').value = match.assetId;
+                if (match.userName && !document.getElementById('usrName').value) {
+                    document.getElementById('usrName').value = match.userName;
+                }
+            }
+        }
+
+        function submitUserTicket() {
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerText = "Submitting...";
+
+            const userName = document.getElementById('usrName').value.trim();
+            const userEmail = document.getElementById('usrEmail').value.trim();
+            const assetId = document.getElementById('usrAsset').value.trim();
+            const category = document.getElementById('usrCategory').value;
+            const priority = document.getElementById('usrPriority').value;
+            const description = document.getElementById('usrDescription').value.trim();
+
+            const tickets = getTickets();
+            const newTicketId = generateTicketId();
+
+            const now = new Date();
+            const createdDate = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5);
+
+            const newTicket = {
+                id: newTicketId,
+                userName: userName,
+                userEmail: userEmail,
+                assetId: assetId,
+                category: category,
+                priority: priority,
+                description: description,
+                createdDate: createdDate,
+                status: 'Open'
+            };
+
+            // Save to the SAME localStorage records the admin pages read from.
+            // Any admin tab already open on ticket.html will pick this up
+            // automatically via the browser's native cross-tab storage event.
+            tickets.unshift(newTicket);
+            setTickets(tickets);
+
+            // Display success screen
+            document.getElementById('displayTicketId').innerText = newTicketId;
+            document.getElementById('formContainer').style.display = 'none';
+            document.getElementById('successCard').style.display = 'block';
+
+            submitBtn.disabled = false;
+            submitBtn.innerText = "🚀 Submit Ticket";
+        }
+
+        function resetFormView() {
+            document.getElementById('userTicketForm').reset();
+            document.getElementById('formContainer').style.display = 'block';
+            document.getElementById('successCard').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
